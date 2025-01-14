@@ -1,0 +1,2 @@
+float64 angle_degrees
+float64 angular_speed_deg_per_sec

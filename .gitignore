@@ -1,0 +1,28 @@
+# ROS 2-specific ignores
+build/
+install/
+log/
+.colcon/
+ros2_ws/.vscode/
+ros2_ws/install/
+ros2_ws/log/
+ros2_ws/src/
+build/
+dev/
+
+# macOS-specific ignores
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon files
+Icon
+._*
+
+# Thumbnails
+._.DS_Store
+Thumbs.db
+
+# Visual Studio Code-specific ignores
+.vscode/
+*.code-workspace
