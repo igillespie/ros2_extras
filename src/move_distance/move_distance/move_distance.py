@@ -62,7 +62,7 @@ class MoveDistanceNode(Node):
         """
         if self.velocity_timer is None:
             self.velocity_timer = self.create_timer(0.1, self.publish_velocity)  # Publish every 0.1 seconds
-            self.get_logger().info("Velocity timer started.")
+            self.get_logger().debug("Velocity timer started.")
 
     def stop_velocity_timer(self):
         """
@@ -71,7 +71,7 @@ class MoveDistanceNode(Node):
         if self.velocity_timer is not None:
             self.velocity_timer.cancel()
             self.velocity_timer = None
-            self.get_logger().info("Velocity timer stopped.")
+            self.get_logger().debug("Velocity timer stopped.")
 
     def publish_velocity(self):
         """
@@ -81,7 +81,7 @@ class MoveDistanceNode(Node):
             twist = Twist()
             twist.linear.x = self.linear_speed if self.target_distance > 0 else -self.linear_speed
             self.cmd_vel_pub.publish(twist)
-            self.get_logger().info(f'Publishing velocity: {twist.linear.x} m/s')
+            self.get_logger().debug(f'Publishing velocity: {twist.linear.x} m/s')
 
     def stop_robot(self):
         """
@@ -93,7 +93,7 @@ class MoveDistanceNode(Node):
         self.moving = False
         self.target_distance = None  # Reset target distance
         self.stop_velocity_timer()  # Stop the velocity timer
-        self.get_logger().info('Robot stopped. Movement completed.')
+        self.get_logger().debug('Robot stopped. Movement completed.')
 
 
 def main(args=None):

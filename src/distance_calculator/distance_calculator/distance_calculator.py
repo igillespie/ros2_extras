@@ -11,7 +11,7 @@ class DistanceCalculator(Node):
         # Subscriber to /odom
         self.odom_subscription = self.create_subscription(
             Odometry,
-            '/odom',
+            '/odometry/filtered',
             self.odom_callback,
             10  # QoS depth
         )

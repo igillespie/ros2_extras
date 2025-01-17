@@ -10,6 +10,8 @@ ros2_ws/src/
 build/
 dev/
 
+src/bno08x_ros2_driver
+
 # macOS-specific ignores
 .DS_Store
 .AppleDouble
