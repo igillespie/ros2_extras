@@ -65,7 +65,7 @@ class MastControl(Node):
             self.current_pan = pan_angle
             self.current_tilt = tilt_angle
 
-            self.get_logger().info(f"Moved mast to angles: pan={pan_angle}, tilt={tilt_angle}")
+            self.get_logger().debug(f"Moved mast to angles: pan={pan_angle}, tilt={tilt_angle}")
         except ValueError as e:
             self.get_logger().error(f"Error moving servos: {e}")
 
@@ -73,7 +73,7 @@ class MastControl(Node):
         """
         Handles incoming PanTiltCommand messages and moves the mast accordingly.
         """
-        self.get_logger().info(f"Received command: pan={msg.pan_angle}, tilt={msg.tilt_angle}")
+        self.get_logger().debug(f"Received command: pan={msg.pan_angle}, tilt={msg.tilt_angle}")
         self.move_mast_to_angles(msg.pan_angle, msg.tilt_angle)
        
 

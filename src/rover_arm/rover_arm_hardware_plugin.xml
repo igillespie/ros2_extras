@@ -1,0 +1,5 @@
+<library path="rover_arm_hardware">
+    <class name="rover_arm::RoverArmHardware" type="rover_arm::RoverArmHardware" base_class_type="hardware_interface::SystemInterface">
+        <description>Hardware interface for controlling the 6 DOF arm.</description>
+    </class>
+</library>

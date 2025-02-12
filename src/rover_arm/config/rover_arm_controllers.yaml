@@ -1,0 +1,46 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 50
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    joint_trajectory_controller:
+        type: joint_trajectory_controller/JointTrajectoryController
+
+    rover_arm_hardware:
+        type: rover_arm/RoverArmHardware
+
+joint_trajectory_controller:
+    ros__parameters:
+      joints:
+        - joint1_base
+        - joint2_shoulder
+        - joint3_elbow
+        - joint4_wrist_pitch
+        - joint5_wrist_swivel
+        - joint6_claw
+      state_interfaces:
+        - position
+      command_interfaces:
+        - position
+      interpolation_method: splines
+      allow_partial_joints_goal: true
+
+# rover_arm_hardware:
+#   ros__parameters:
+#     i2c_address: 0x40  # Example PCA9685 I2C address, ignored currently
+#     pwm_frequency: 50  # Servo PWM frequency
+#     joints:
+#       - joint1_base
+#       - joint2_shoulder
+#       - joint3_elbow
+#       - joint4_wrist_pitch
+#       - joint5_wrist_swivel
+#       - joint6_claw
+#     joints_to_servo_channels:
+#       joint1_base: 7        
+#       joint2_shoulder: 8    
+#       joint3_elbow: 9      
+#       joint4_wrist_pitch: 10 
+#       joint5_wrist_swivel: 11
+#       joint6_claw: 12 
