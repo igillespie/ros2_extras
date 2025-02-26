@@ -1,0 +1,8 @@
+# Goal: Desired turn angle in degrees
+float64 target_angle
+---
+# Result: Whether the turn was successful
+bool success
+---
+# Feedback: Current 2D pose (position + quaternion)
+geometry_msgs/Pose current_pose

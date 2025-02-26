@@ -1,22 +1,38 @@
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, Quaternion
+from geometry_msgs.msg import Twist, Quaternion, Pose
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import JointState
-from turn_in_place_interfaces.msg import TurnCommand
+from turn_in_place_interfaces.action import Turn
 from transforms3d.euler import quat2euler
 from math import radians, atan2, copysign
 import math
+import time
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.action import ActionServer
+
+from enum import Enum
+
+class TurnStatus(Enum):
+    SUCCESS = 1
+    FAILURE = 2
+    IN_PROGRESS = 3
+    TIMEOUT = 4
+
+
+# PUBLISH THIS TO TEST: ros2 action send_goal /turn_in_place turn_in_place_interfaces/action/Turn "{target_angle: 15.0}" 
 
 class TurnInPlaceNode(Node):
     def __init__(self):
         super().__init__('turn_in_place')
+
         self.publisher = self.create_publisher(Twist, 'cmd_vel_intuitive', 10)
-        self.subscriber = self.create_subscription(
-            TurnCommand,
-            'turn_command',
-            self.execute_turn,
-            10
+        
+        self._action_server = ActionServer(
+            self,
+            Turn,
+            'turn_in_place',
+            self.execute_turn_callback
         )
 
         self.latest_pose = None
@@ -42,6 +58,8 @@ class TurnInPlaceNode(Node):
             10
         )
 
+        self.last_pose_log = None
+
         self.drive_state_subscription = self.create_subscription(
             JointState,
             '/drive_state',
@@ -49,8 +67,7 @@ class TurnInPlaceNode(Node):
             10
         )
 
-        self.timer = None
-        self.get_logger().info('TurnInPlaceNode is ready and listening for turn commands.')
+        self.get_logger().info('TurnInPlaceNode action server ready and listening for turn commands.')
 
     def extract_yaw(self, orientation: Quaternion):
         """
@@ -58,9 +75,36 @@ class TurnInPlaceNode(Node):
         """
 
         # Convert quaternion to euler angles
-        quaternion = [orientation.w, orientation.x, orientation.y, orientation.z]  # Note the order for transforms3d
-        _, _, yaw = quat2euler(quaternion)
+        quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]  # Note the order for transforms3d
+        # _, _, yaw = quat2euler(quaternion)
+        # return yaw
+        _, _, yaw = self.euler_from_quaternion(quaternion)
         return yaw
+
+    def euler_from_quaternion(self, quat):
+        """
+        Convert a quaternion into Euler angles (roll, pitch, yaw).
+        """
+        x, y, z, w = quat
+
+        # Roll (x-axis rotation)
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        # Pitch (y-axis rotation)
+        sinp = 2 * (w * y - z * x)
+        if abs(sinp) >= 1:
+            pitch = math.copysign(math.pi / 2, sinp)  # Use 90 degrees if out of range
+        else:
+            pitch = math.asin(sinp)
+
+        # Yaw (z-axis rotation)
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        return roll, pitch, yaw
 
     def normalize_angle(self, angle):
         """
@@ -93,6 +137,8 @@ class TurnInPlaceNode(Node):
 
     def update_pose(self, msg):
 
+        current_time = self.get_clock().now().to_msg()
+
         if self.latest_pose is not None:
             
             # Extract the timestamp and yaw from the latest pose
@@ -100,7 +146,7 @@ class TurnInPlaceNode(Node):
             pose_yaw = self.extract_yaw(msg.pose.pose.orientation)
 
             # Calculate time difference
-            current_time = self.get_clock().now().to_msg()
+            
             time_difference = (current_time.sec + current_time.nanosec * 1e-9) - (pose_time.sec + pose_time.nanosec * 1e-9)
 
             # Calculate angular velocity if time difference is valid
@@ -108,16 +154,18 @@ class TurnInPlaceNode(Node):
                 angular_velocity = (self.current_yaw - pose_yaw) / time_difference
                 self.current_velocity_from_odom_differential = angular_velocity
 
-                # self.get_logger().info(
-                #     f"Calculated angular velocity: angular_velocity={angular_velocity:.4f} rad/s, "
-                #     f"previous_yaw={pose_yaw:.4f} rad, current_yaw={self.current_yaw:.4f} rad, "
-                #     f"time_difference={time_difference:.4f} seconds"
-                # )
-            # else:
-            #     self.get_logger().warn("Time difference is zero or invalid. Cannot calculate angular velocity.")
 
-        self.latest_pose = msg #cache this off so we can always get the latest speed
+        self.latest_pose = msg
         self.current_yaw = self.extract_yaw(msg.pose.pose.orientation)
+
+        # Convert ROS2 time message to seconds for comparison
+        now_sec = current_time.sec + current_time.nanosec * 1e-9
+        last_log_sec = self.last_pose_log.sec + self.last_pose_log.nanosec * 1e-9 if self.last_pose_log else None
+
+        # Log yaw every second
+        # if self.last_pose_log is None or (now_sec - last_log_sec) >= 1.0:
+        #     self.get_logger().info(f"Pose yaw = {self.current_yaw:.3f} radians.")
+        #     self.last_pose_log = self.get_clock().now().to_msg()
 
     def calculate_target_yaw(self, angle_degrees):
         """
@@ -175,7 +223,7 @@ class TurnInPlaceNode(Node):
 
             self.get_logger().debug(f"TIME to target: {time_to_reach_target:.2f}s at latest ang speed={latest_vel:.4f} rad/s")
 
-            if abs(yaw_error) > abs(midpoint - (midpoint / 2.0)) and time_to_reach_target >= 5.0:  # Ramp up before midpoint
+            if abs(yaw_error) > abs(midpoint - (midpoint / 2.0)) and time_to_reach_target >= 500.0:  # Ramp up before midpoint, adding huge check here to try slowing things down
                 if math.isclose(previous_speed, 0.0, abs_tol=epsilon) or not self.all_wheels_moving():
                     scaled_speed = previous_speed + scale_factor
                 elif latest_vel <= 0.25:  # This is real-world velocity, don't go faster than that
@@ -205,13 +253,17 @@ class TurnInPlaceNode(Node):
         twist = Twist()
         self.publisher.publish(twist)
 
-    def execute_turn(self, msg):
+    async def execute_turn_callback(self, goal_handle):
         """
         Handle the turn command by initializing the target yaw and starting monitoring.
         """
+        
         if self.current_yaw is None:
             self.get_logger().warn("Cannot execute turn: Waiting for odometry data.")
-            return
+            goal_handle.abort()
+            turn = Turn.Result()
+            turn.success = False
+            return turn
 
         #clear out any cached values
         self.current_velocity_from_odom_differential = 0.0
@@ -219,7 +271,7 @@ class TurnInPlaceNode(Node):
         self.last_published_cmd_vel = None
 
         # Set target yaw
-        self.target_yaw = self.calculate_target_yaw(msg.angle_degrees)
+        self.target_yaw = self.calculate_target_yaw(goal_handle.request.target_angle)
         self.turn_start_time = self.get_clock().now().nanoseconds / 1e9
 
         
@@ -229,44 +281,84 @@ class TurnInPlaceNode(Node):
 
         #hand tune yaw tolerance, smaller turns, smaller tolerance
         if abs(total_yaw_error < 0.7854): #45˚
-            self.yaw_tolerance = 0.075
+            self.yaw_tolerance = 0.05
         else:
             self.yaw_tolerance = 0.1
        
        # Log the current and target yaw
         self.get_logger().info(
-            f"Received turn command: current_yaw={self.current_yaw:.2f} radians, "
+            f"Received turn command: degrees={goal_handle.request.target_angle} current_yaw={self.current_yaw:.2f} radians, "
             f"target_yaw={self.target_yaw:.2f} radians."
         )
 
-        # Start monitoring the turn
-        if self.timer is None:
-            self.timer = self.create_timer(1/15, self.monitor_turn)  # 30 Hz
+        turn = Turn.Result()
+        while rclpy.ok():
+            status = self.monitor_turn(goal_handle)
+            # self.get_logger().info(f"Status callback is {status}.")
+            match status:
+                case TurnStatus.SUCCESS:
+                    self.stop_robot()
+                    goal_handle.succeed()
+                    turn.success = True
+                    break
+                case TurnStatus.FAILURE:
+                    goal_handle.abort()
+                    self.stop_robot()
+                    turn.success = False
+                    break
+                case TurnStatus.IN_PROGRESS:
+                    time.sleep(1/2) #make sure we collect some odometry and velocity data before calculating again
+                case TurnStatus.TIMEOUT:
+                    goal_handle.abort()
+                    self.stop_robot()
+                    turn.success = False
+                    break
+                case _:
+                    self.get_logger().warn("Unknown status.")
+                    goal_handle.abort()
+                    self.stop_robot()
+                    turn.success = False
+                    break
+            
+        return turn
 
-    def monitor_turn(self):
+    def send_feedback(self, goal_handle):
+        """ Send feedback to the action client. """
+
+        feedback_msg = Turn.Feedback()
+
+        # ✅ Ensure `self.latest_pose` is a Pose message
+        if self.latest_pose and isinstance(self.latest_pose, Odometry):
+            feedback_msg.current_pose = self.latest_pose.pose.pose
+        else:
+            # ✅ If latest_pose is None or invalid, send a default Pose
+            self.get_logger().warn("latest_pose is not set or invalid, sending default Pose.")
+            feedback_msg.current_pose = Pose()  # Sends an empty Pose message instead of crashing
+
+        goal_handle.publish_feedback(feedback_msg)
+
+    def monitor_turn(self, goal_handle) -> TurnStatus:
         """
         Monitor the turn and stop the robot once the target is reached.
         """
+        # self.get_logger().info("Monitor turn")
         if self.current_yaw is None or self.target_yaw is None:
             self.get_logger().warn("Pose data unavailable. Skipping monitoring step.")
-            return
+            return TurnStatus.ERROR
 
         # Check timeout
         current_time = self.get_clock().now().nanoseconds / 1e9
 
         if (current_time - self.turn_start_time) > self.timeout:
             self.get_logger().warn("Turn timed out. Stopping robot.")
-            self.stop_robot()
-            if self.timer is not None:
-                self.timer.cancel()
-                self.timer = None
-            return
+            return TurnStatus.TIMEOUT
+            
 
         # Calculate yaw error
         yaw_error = self.calculate_yaw_error(self.target_yaw, self.current_yaw)
 
         # Log the current yaw and yaw error
-        self.get_logger().debug(
+        self.get_logger().info(
             f"Monitoring turn: current_yaw={self.current_yaw:.2f} radians, "
             f"target_yaw={self.target_yaw:.2f} radians, "
             f"yaw_error={yaw_error:.2f} radians."
@@ -291,21 +383,21 @@ class TurnInPlaceNode(Node):
                 self.last_published_cmd_vel = twist  # Cache the most recent message
                 self.publisher.publish(twist)
                 self.last_published_time = current_time  # Update last published time
+                self.send_feedback(goal_handle)
                 
                 self.get_logger().debug(
                     f"Published twist: angular_speed={angular_speed:.2f}, time_since_last_publish={time_since_last_publish:.2f}s"
                 )
+                return TurnStatus.IN_PROGRESS
             else:
                 self.get_logger().debug(
                     f"Skipped publishing: time_since_last_publish={time_since_last_publish:.2f}s (10 Hz limit)"
                 )
+                return TurnStatus.IN_PROGRESS
         else:
-            # Target reached, stop the robot
-            self.stop_robot()
+            # Target reached
             self.get_logger().info(f"Turn complete. Robot stopped at {self.current_yaw}")
-            if self.timer is not None:
-                self.timer.cancel()
-                self.timer = None
+            return TurnStatus.SUCCESS
 
 
 def main(args=None):
@@ -313,7 +405,10 @@ def main(args=None):
     node = TurnInPlaceNode()
 
     try:
-        rclpy.spin(node)
+        # ✅ Use MultiThreadedExecutor to allow multiple threads to run
+        executor = MultiThreadedExecutor()
+        rclpy.spin(node, executor=executor)
+
     except KeyboardInterrupt:
         pass
     finally:

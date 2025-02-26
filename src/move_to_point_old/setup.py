@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'move_to_point'
+package_name = 'move_to_point_old'
 
 setup(
     name=package_name,
@@ -20,7 +20,6 @@ setup(
     # tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'path_planner = move_to_point.path_planner:main',
             'move_to_point = move_to_point.move_to_point:main',
         ],
     },

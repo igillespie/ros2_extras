@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'move_to_point'
+package_name = 'path_visualizer'
 
 setup(
     name=package_name,
@@ -17,11 +17,10 @@ setup(
     maintainer_email='ian_gillespie@mac.com',
     description='TODO: Package description',
     license='TODO: License declaration',
-    # tests_require=['pytest'],
+    
     entry_points={
         'console_scripts': [
-            'path_planner = move_to_point.path_planner:main',
-            'move_to_point = move_to_point.move_to_point:main',
-        ],
-    },
+            'path_visualizer = path_visualizer.path_visualizer:main',
+    ],
+},
 )

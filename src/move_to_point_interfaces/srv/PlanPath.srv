@@ -1,0 +1,10 @@
+# Request
+float32 start_x
+float32 start_y
+float32 target_x
+float32 target_y
+
+---
+
+# Response
+geometry_msgs/Pose[] waypoints
